@@ -17,81 +17,99 @@
 
 ## KV 存储配置
 
-所有配置通过 KV 存储，**修改后即时生效**，无需重新部署。
+所有配置通过 KV 存储，**修改后即时生效**，无需重新部署。使用两个 KV 命名空间，服务器列表可跨部署共享，代理配置各部署独立。
 
 ### 配置步骤
 
-1. 在 Cloudflare 控制台创建一个 KV 命名空间（例如 `CONFIG_KV`）。
-2. 在 Pages / Workers 的设置中，添加 KV 命名空间绑定：
-   - **变量名称**: `CONFIG_KV`
-   - **KV 命名空间**: 选择上一步创建的命名空间
+1. 在 Cloudflare 控制台创建两个 KV 命名空间：
+   - **服务器 KV**（例如 `SERVERS_KV`）— 存储服务器列表，多个部署可共享
+   - **配置 KV**（例如 `CONFIG_KV`）— 存储 TOKEN 和代理配置，每个部署各自独立
+2. 在每个 Pages / Workers 部署的设置中，添加 KV 命名空间绑定：
+   - 变量名称 `SERVERS_KV` → 选择共享的服务器 KV 命名空间
+   - 变量名称 `CONFIG_KV` → 选择该部署独立的配置 KV 命名空间
 3. 部署后，通过 Cloudflare 控制台或管理 API 写入配置即可使用。
 
 ### KV 中的 Key
 
-| Key | 必填 | 说明 |
-|-----|------|------|
-| `TOKEN` | 否 | 访问令牌，未设置时默认为 `auto` |
-| `SUB_CONFIG` | 否 | JSON 格式的节点配置，详见下方说明 |
+**SERVERS_KV**（共享）:
+
+| Key | 说明 |
+|-----|------|
+| `SERVERS` | JSON 数组，服务器列表 |
+
+**CONFIG_KV**（各部署独立）:
+
+| Key | 说明 |
+|-----|------|
+| `TOKEN` | 访问令牌，未设置时默认为 `auto` |
+| `PROXIES` | JSON 数组，代理配置列表 |
 
 你可以在 Cloudflare 控制台直接编辑 KV 值，也可以使用下方的管理 API。
 
 ## 管理 API
 
-通过 HTTP 请求直接更新 KV 中的配置（需要 TOKEN 鉴权）。
+通过 HTTP 请求管理 KV 中的配置（所有接口需要 TOKEN 鉴权）。
 
-### 查看当前配置
+### 服务器管理
+
+```
+GET /admin/servers?token=<TOKEN>
+```
+
+```
+PUT /admin/servers?token=<TOKEN>
+Content-Type: application/json
+
+[
+  { "id": "server_0", "name": "香港节点 01", "host": "203.0.113.10" },
+  { "id": "server_1", "name": "香港节点 02", "host": "2001:db8::1" }
+]
+```
+
+### 代理管理
+
+```
+GET /admin/proxies?token=<TOKEN>
+```
+
+```
+PUT /admin/proxies?token=<TOKEN>
+Content-Type: application/json
+
+[
+  {
+    "tag": "套餐 A",
+    "template": "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@{{IP}}:{{PORT}}?#{{NAME}}",
+    "routes": [
+      { "serverId": "server_0", "name": "线路 1", "port": "8388" }
+    ]
+  }
+]
+```
+
+### 完整配置
 
 ```
 GET /admin/config?token=<TOKEN>
 ```
 
-### 更新配置
+更新 TOKEN:
 
 ```
 PUT /admin/config?token=<TOKEN>
 Content-Type: application/json
 
-{
-  "TOKEN": "new-token",
-  "SUB_CONFIG": {
-    "proxies": [...]
-  }
-}
+{ "TOKEN": "new-token" }
 ```
 
-可以只更新其中一个字段，例如只更新 `SUB_CONFIG`：
+## 配置说明
 
-```
-PUT /admin/config?token=<TOKEN>
-Content-Type: application/json
-
-{
-  "SUB_CONFIG": {
-    "servers": [
-      { "id": "s0", "name": "香港节点 01", "host": "203.0.113.10" }
-    ],
-    "proxies": [
-      {
-        "tag": "套餐 A",
-        "template": "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@{{IP}}:{{PORT}}?#{{NAME}}",
-        "routes": [
-          { "serverId": "s0", "name": "线路 1", "port": "8388" }
-        ]
-      }
-    ]
-  }
-}
-```
-
-## SUB_CONFIG 配置说明
-
-`SUB_CONFIG` 是一个 JSON 字符串，包含 `servers`（服务器列表）和 `proxies`（代理列表）两部分。
+配置分为 `servers`（服务器列表）和 `proxies`（代理列表）两部分，分别存储在不同的 KV 中。
 
 ### 结构
 
-- **`servers`** — 集中定义服务器，通过 `id` 被 `routes` 引用，地址变更只需改一处
-- **`proxies`** — 代理列表，每个代理包含 `tag`（标签）、`template`（模板）和 `routes`（线路列表）
+- **`servers`**（SERVERS_KV）— 集中定义服务器，通过 `id` 被 `routes` 引用，地址变更只需改一处，多个部署共享
+- **`proxies`**（CONFIG_KV）— 代理列表，每个代理包含 `tag`（标签）、`template`（模板）和 `routes`（线路列表），各部署独立
 - **`routes`** — 线路列表，每条线路通过 `serverId` 引用一个服务器并指定端口
 
 ### 占位符
@@ -106,31 +124,36 @@ Content-Type: application/json
 
 ### 配置示例
 
+**SERVERS_KV** 中的 `SERVERS`（多个部署共享）:
+
 ```json
-{
-  "servers": [
-    { "id": "server_0", "name": "香港节点 01", "host": "203.0.113.10" },
-    { "id": "server_1", "name": "香港节点 02", "host": "2001:db8::1" }
-  ],
-  "proxies": [
-    {
-      "tag": "套餐 A",
-      "template": "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@{{IP}}:{{PORT}}?#{{NAME}}",
-      "routes": [
-        { "serverId": "server_0", "name": "线路 1", "port": "8388" },
-        { "serverId": "server_1", "name": "线路 2", "port": "8389" }
-      ]
-    },
-    {
-      "tag": "套餐 B",
-      "template": "vless://00000000-0000-0000-0000-000000000000@{{IP}}:{{PORT}}?encryption=none&security=reality&sni=example.com&fp=chrome&type=xhttp#{{NAME}}",
-      "routes": [
-        { "serverId": "server_0", "name": "线路 1", "port": "443" },
-        { "serverId": "server_1", "name": "线路 2", "port": "8443" }
-      ]
-    }
-  ]
-}
+[
+  { "id": "server_0", "name": "香港节点 01", "host": "203.0.113.10" },
+  { "id": "server_1", "name": "香港节点 02", "host": "2001:db8::1" }
+]
+```
+
+**CONFIG_KV** 中的 `PROXIES`（各部署独立）:
+
+```json
+[
+  {
+    "tag": "套餐 A",
+    "template": "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@{{IP}}:{{PORT}}?#{{NAME}}",
+    "routes": [
+      { "serverId": "server_0", "name": "线路 1", "port": "8388" },
+      { "serverId": "server_1", "name": "线路 2", "port": "8389" }
+    ]
+  },
+  {
+    "tag": "套餐 B",
+    "template": "vless://00000000-0000-0000-0000-000000000000@{{IP}}:{{PORT}}?encryption=none&security=reality&sni=example.com&fp=chrome&type=xhttp#{{NAME}}",
+    "routes": [
+      { "serverId": "server_0", "name": "线路 1", "port": "443" },
+      { "serverId": "server_1", "name": "线路 2", "port": "8443" }
+    ]
+  }
+]
 ```
 
 上面的配置会展开为：

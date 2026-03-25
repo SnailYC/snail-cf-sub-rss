@@ -1,39 +1,37 @@
 /**
  * Cloudflare Worker — 订阅节点模板展开服务
  *
- * KV 存储（必须绑定，修改后即时生效无需重新部署）:
- *   绑定名: CONFIG_KV
- *   KV 中的 key:
- *     TOKEN      — 访问令牌，未设置时默认 'auto'
- *     SUB_CONFIG — JSON 格式的节点配置，结构如下:
- *       {
- *         "servers": [
- *           { "id": "server_0", "name": "服务器名称", "host": "1.2.3.4" }
- *         ],
- *         "proxies": [
- *           {
- *             "tag": "订阅标签",
- *             "template": "ss://...@{{IP}}:{{PORT}}?#{{NAME}}",
- *             "routes": [
- *               { "serverId": "server_0", "name": "线路名称", "port": "1234" }
- *             ]
- *           }
- *         ]
- *       }
+ * KV 绑定（修改后即时生效无需重新部署）:
+ *
+ *   SERVERS_KV — 服务器列表（多个部署可共享同一个 KV 命名空间）
+ *     key: SERVERS — JSON 数组:
+ *       [{ "id": "server_0", "name": "服务器名称", "host": "1.2.3.4" }]
+ *
+ *   CONFIG_KV — 部署独立配置（每个部署绑定各自的 KV 命名空间）
+ *     key: TOKEN   — 访问令牌，未设置时默认 'auto'
+ *     key: PROXIES — JSON 数组:
+ *       [{
+ *         "tag": "订阅标签",
+ *         "template": "ss://...@{{IP}}:{{PORT}}?#{{NAME}}",
+ *         "routes": [{ "serverId": "server_0", "name": "线路名称", "port": "1234" }]
+ *       }]
  *
  * 占位符:
- *   {{IP}}   — 节点 IP，IPv6 地址自动包裹 []
+ *   {{IP}}   — 服务器地址，IPv6 自动包裹 []
  *   {{PORT}} — 端口号
- *   {{NAME}} — 节点名称，自动 URL 编码
+ *   {{NAME}} — 自动生成为 tag-route.name，URL 编码
  *
  * 访问方式:
  *   /?token=<TOKEN>        — 返回 base64 编码的订阅内容（默认）
  *   /?token=<TOKEN>&raw=1  — 返回原始多行文本
  *
  * 管理 API（需要 TOKEN 鉴权）:
- *   PUT /admin/config?token=<TOKEN>  — 更新配置到 KV
- *     Body: { "TOKEN": "...", "SUB_CONFIG": { ... } }
- *   GET /admin/config?token=<TOKEN>  — 查看 KV 中的当前配置
+ *   GET  /admin/servers?token=<TOKEN>  — 查看服务器列表
+ *   PUT  /admin/servers?token=<TOKEN>  — 更新服务器列表
+ *   GET  /admin/proxies?token=<TOKEN>  — 查看代理配置
+ *   PUT  /admin/proxies?token=<TOKEN>  — 更新代理配置
+ *   GET  /admin/config?token=<TOKEN>   — 查看完整配置（含 TOKEN）
+ *   PUT  /admin/config?token=<TOKEN>   — 更新 TOKEN
  */
 
 let myToken = 'auto';
@@ -43,12 +41,16 @@ let download = Math.floor(Math.random() * 1099511627776);
 let upload = download;
 
 async function getConfig(env) {
-    const kvToken = await env.CONFIG_KV.get('TOKEN');
-    const kvSubConfig = await env.CONFIG_KV.get('SUB_CONFIG');
+    const [kvToken, kvProxies, kvServers] = await Promise.all([
+        env.CONFIG_KV.get('TOKEN'),
+        env.CONFIG_KV.get('PROXIES'),
+        env.SERVERS_KV ? env.SERVERS_KV.get('SERVERS') : null,
+    ]);
 
     return {
         token: kvToken || myToken,
-        subConfig: kvSubConfig || '{"proxies":[]}',
+        servers: kvServers || '[]',
+        proxies: kvProxies || '[]',
     };
 }
 
@@ -80,7 +82,7 @@ export default {
             });
         }
 
-        const result = expandTemplates(config.subConfig);
+        const result = expandTemplates(config.servers, config.proxies);
 
         download = Math.floor(((timestamp - Date.now()) / timestamp * total * 1099511627776) / 2);
         total *= 1099511627776;
@@ -104,31 +106,51 @@ async function handleAdmin(request, env, url, token, fakeToken, config) {
         return jsonResponse({ error: 'Unauthorized' }, 401);
     }
 
-    if (url.pathname === '/admin/config' && request.method === 'GET') {
+    const { pathname } = url;
+    const { method } = request;
+
+    if (pathname === '/admin/servers' && method === 'GET') {
+        return jsonResponse(JSON.parse(config.servers));
+    }
+
+    if (pathname === '/admin/servers' && method === 'PUT') {
+        if (!env.SERVERS_KV) {
+            return jsonResponse({ error: 'SERVERS_KV binding not configured' }, 500);
+        }
+        const body = await request.json();
+        const str = typeof body === 'string' ? body : JSON.stringify(body);
+        await env.SERVERS_KV.put('SERVERS', str);
+        return jsonResponse({ message: 'Servers updated', servers: JSON.parse(str) });
+    }
+
+    if (pathname === '/admin/proxies' && method === 'GET') {
+        return jsonResponse(JSON.parse(config.proxies));
+    }
+
+    if (pathname === '/admin/proxies' && method === 'PUT') {
+        const body = await request.json();
+        const str = typeof body === 'string' ? body : JSON.stringify(body);
+        await env.CONFIG_KV.put('PROXIES', str);
+        return jsonResponse({ message: 'Proxies updated', proxies: JSON.parse(str) });
+    }
+
+    if (pathname === '/admin/config' && method === 'GET') {
         return jsonResponse({
             TOKEN: config.token,
-            SUB_CONFIG: JSON.parse(config.subConfig),
+            servers: JSON.parse(config.servers),
+            proxies: JSON.parse(config.proxies),
         });
     }
 
-    if (url.pathname === '/admin/config' && request.method === 'PUT') {
+    if (pathname === '/admin/config' && method === 'PUT') {
         const body = await request.json();
-
         if (body.TOKEN !== undefined) {
             await env.CONFIG_KV.put('TOKEN', body.TOKEN);
         }
-        if (body.SUB_CONFIG !== undefined) {
-            const subConfigStr = typeof body.SUB_CONFIG === 'string'
-                ? body.SUB_CONFIG
-                : JSON.stringify(body.SUB_CONFIG);
-            await env.CONFIG_KV.put('SUB_CONFIG', subConfigStr);
-        }
-
         const updated = await getConfig(env);
         return jsonResponse({
             message: 'Config updated',
             TOKEN: updated.token,
-            SUB_CONFIG: JSON.parse(updated.subConfig),
         });
     }
 
@@ -142,15 +164,17 @@ function jsonResponse(data, status = 200) {
     });
 }
 
-function expandTemplates(subConfigJson) {
-    const config = JSON.parse(subConfigJson);
+function expandTemplates(serversJson, proxiesJson) {
+    const servers = JSON.parse(serversJson);
+    const proxies = JSON.parse(proxiesJson);
+
     const serverMap = {};
-    for (const s of config.servers || []) {
+    for (const s of servers) {
         serverMap[s.id] = s;
     }
 
     const lines = [];
-    for (const proxy of config.proxies || []) {
+    for (const proxy of proxies) {
         const { tag, template, routes } = proxy;
         for (const route of routes || []) {
             const server = serverMap[route.serverId];
