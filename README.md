@@ -44,15 +44,15 @@
     {
       "template": "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@{{IP}}:{{PORT}}?#{{NAME}}",
       "nodes": [
-        { "name": "地址 1-1", "ip": "119.147.22.228", "port": "39623" },
-        { "name": "地址 1-2", "ip": "119.147.22.222", "port": "39621" }
+        { "name": "地址 1-1", "ip": "1.2.3.4", "port": "39623" },
+        { "name": "地址 1-2", "ip": "1.2.3.4", "port": "39621" }
       ]
     },
     {
       "template": "vless://uuid@{{IP}}:{{PORT}}?encryption=none&security=reality&sni=yahoo.com&fp=chrome&type=xhttp#{{NAME}}",
       "nodes": [
         { "name": "地址 2-1", "ip": "example.com", "port": "35727" },
-        { "name": "地址 2-2", "ip": "2409:8c54:1841:2008:0:1:0:1e5", "port": "15182" }
+        { "name": "地址 2-2", "ip": "2409:8c54:1841:2008:0:1:0:1b5", "port": "15182" }
       ]
     }
   ]
@@ -62,10 +62,10 @@
 上面的配置会展开为：
 
 ```
-ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@119.147.22.228:39623?#%E5%9C%B0%E5%9D%80%201-1
-ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@119.147.22.222:39621?#%E5%9C%B0%E5%9D%80%201-2
+ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@1.2.3.4:39623?#%E5%9C%B0%E5%9D%80%201-1
+ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@1.2.3.4:39621?#%E5%9C%B0%E5%9D%80%201-2
 vless://uuid@example.com:35727?encryption=none&security=reality&sni=yahoo.com&fp=chrome&type=xhttp#%E5%9C%B0%E5%9D%80%202-1
-vless://uuid@[2409:8c54:1841:2008:0:1:0:1e5]:15182?encryption=none&security=reality&sni=yahoo.com&fp=chrome&type=xhttp#%E5%9C%B0%E5%9D%80%202-2
+vless://uuid@[2409:8c54:1841:2008:0:1:0:1b5]:15182?encryption=none&security=reality&sni=yahoo.com&fp=chrome&type=xhttp#%E5%9C%B0%E5%9D%80%202-2
 ```
 
 ## 访问方式
