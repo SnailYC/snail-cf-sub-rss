@@ -68,11 +68,15 @@ Content-Type: application/json
 
 {
   "SUB_CONFIG": {
+    "servers": [
+      { "id": "s0", "name": "香港节点 01", "ip": "203.0.113.10" }
+    ],
     "subs": [
       {
+        "tag": "套餐 A",
         "template": "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@{{IP}}:{{PORT}}?#{{NAME}}",
-        "nodes": [
-          { "name": "节点1", "ip": "1.2.3.4", "port": "8080" }
+        "routes": [
+          { "server": "s0", "name": "线路 1", "port": "8388" }
         ]
       }
     ]
@@ -82,7 +86,13 @@ Content-Type: application/json
 
 ## SUB_CONFIG 配置说明
 
-`SUB_CONFIG` 是一个 JSON 字符串，包含一个 `subs` 数组，每个元素由 `template`（模板）和 `nodes`（节点列表）组成。
+`SUB_CONFIG` 是一个 JSON 字符串，包含 `servers`（服务器列表）和 `subs`（订阅列表）两部分。
+
+### 结构
+
+- **`servers`** — 集中定义服务器，通过 `id` 被 `routes` 引用，IP 变更只需改一处
+- **`subs`** — 订阅列表，每个订阅包含 `tag`（标签）、`template`（模板）和 `routes`（线路列表）
+- **`routes`** — 线路列表，每条线路引用一个 `server` 并指定端口
 
 ### 占位符
 
@@ -90,27 +100,33 @@ Content-Type: application/json
 
 | 占位符 | 说明 |
 |--------|------|
-| `{{IP}}` | 节点 IP 地址。IPv6 地址自动包裹 `[]` |
-| `{{PORT}}` | 节点端口 |
-| `{{NAME}}` | 节点名称，自动进行 URL 编码 |
+| `{{IP}}` | 服务器 IP 地址（从 `servers` 中获取，IPv6 自动包裹 `[]`） |
+| `{{PORT}}` | 线路端口（来自 `routes` 中的 `port`） |
+| `{{NAME}}` | 自动生成为 `tag-route.name`（如 `套餐 A-线路 1`），URL 编码 |
 
 ### 配置示例
 
 ```json
 {
+  "servers": [
+    { "id": "server_0", "name": "香港节点 01", "ip": "203.0.113.10" },
+    { "id": "server_1", "name": "香港节点 02", "ip": "2001:db8::1" }
+  ],
   "subs": [
     {
+      "tag": "套餐 A",
       "template": "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@{{IP}}:{{PORT}}?#{{NAME}}",
-      "nodes": [
-        { "name": "地址 1-1", "ip": "1.2.3.4", "port": "39623" },
-        { "name": "地址 1-2", "ip": "1.2.3.4", "port": "39621" }
+      "routes": [
+        { "server": "server_0", "name": "线路 1", "port": "8388" },
+        { "server": "server_1", "name": "线路 2", "port": "8389" }
       ]
     },
     {
-      "template": "vless://uuid@{{IP}}:{{PORT}}?encryption=none&security=reality&sni=yahoo.com&fp=chrome&type=xhttp#{{NAME}}",
-      "nodes": [
-        { "name": "地址 2-1", "ip": "example.com", "port": "35727" },
-        { "name": "地址 2-2", "ip": "2409:8c54:1841:2008:0:1:0:1b5", "port": "15182" }
+      "tag": "套餐 B",
+      "template": "vless://00000000-0000-0000-0000-000000000000@{{IP}}:{{PORT}}?encryption=none&security=reality&sni=example.com&fp=chrome&type=xhttp#{{NAME}}",
+      "routes": [
+        { "server": "server_0", "name": "线路 1", "port": "443" },
+        { "server": "server_1", "name": "线路 2", "port": "8443" }
       ]
     }
   ]
@@ -120,10 +136,10 @@ Content-Type: application/json
 上面的配置会展开为：
 
 ```
-ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@1.2.3.4:39623?#%E5%9C%B0%E5%9D%80%201-1
-ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@1.2.3.4:39621?#%E5%9C%B0%E5%9D%80%201-2
-vless://uuid@example.com:35727?encryption=none&security=reality&sni=yahoo.com&fp=chrome&type=xhttp#%E5%9C%B0%E5%9D%80%202-1
-vless://uuid@[2409:8c54:1841:2008:0:1:0:1b5]:15182?encryption=none&security=reality&sni=yahoo.com&fp=chrome&type=xhttp#%E5%9C%B0%E5%9D%80%202-2
+ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@203.0.113.10:8388?#%E5%A5%97%E9%A4%90%20A-%E7%BA%BF%E8%B7%AF%201
+ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@[2001:db8::1]:8389?#%E5%A5%97%E9%A4%90%20A-%E7%BA%BF%E8%B7%AF%202
+vless://00000000-0000-0000-0000-000000000000@203.0.113.10:443?encryption=none&security=reality&sni=example.com&fp=chrome&type=xhttp#%E5%A5%97%E9%A4%90%20B-%E7%BA%BF%E8%B7%AF%201
+vless://00000000-0000-0000-0000-000000000000@[2001:db8::1]:8443?encryption=none&security=reality&sni=example.com&fp=chrome&type=xhttp#%E5%A5%97%E9%A4%90%20B-%E7%BA%BF%E8%B7%AF%202
 ```
 
 ## 访问方式

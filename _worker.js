@@ -7,11 +7,15 @@
  *     TOKEN      — 访问令牌，未设置时默认 'auto'
  *     SUB_CONFIG — JSON 格式的节点配置，结构如下:
  *       {
+ *         "servers": [
+ *           { "id": "server_0", "name": "服务器名称", "ip": "1.2.3.4" }
+ *         ],
  *         "subs": [
  *           {
+ *             "tag": "订阅标签",
  *             "template": "ss://...@{{IP}}:{{PORT}}?#{{NAME}}",
- *             "nodes": [
- *               { "name": "节点名称", "ip": "1.2.3.4", "port": "1234" }
+ *             "routes": [
+ *               { "server": "server_0", "name": "线路名称", "port": "1234" }
  *             ]
  *           }
  *         ]
@@ -140,16 +144,23 @@ function jsonResponse(data, status = 200) {
 
 function expandTemplates(subConfigJson) {
     const config = JSON.parse(subConfigJson);
-    const lines = [];
+    const serverMap = {};
+    for (const s of config.servers || []) {
+        serverMap[s.id] = s;
+    }
 
+    const lines = [];
     for (const sub of config.subs || []) {
-        const { template, nodes } = sub;
-        for (const node of nodes || []) {
-            const ip = node.ip.includes(':') ? `[${node.ip}]` : node.ip;
+        const { tag, template, routes } = sub;
+        for (const route of routes || []) {
+            const server = serverMap[route.server];
+            if (!server) continue;
+            const ip = server.ip.includes(':') ? `[${server.ip}]` : server.ip;
+            const name = `${tag}-${route.name}`;
             const line = template
                 .replaceAll('{{IP}}', ip)
-                .replaceAll('{{PORT}}', node.port)
-                .replaceAll('{{NAME}}', encodeURIComponent(node.name));
+                .replaceAll('{{PORT}}', route.port)
+                .replaceAll('{{NAME}}', encodeURIComponent(name));
             lines.push(line);
         }
     }
