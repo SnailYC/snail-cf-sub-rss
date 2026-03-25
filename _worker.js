@@ -1,19 +1,21 @@
 /**
  * Cloudflare Worker — 订阅节点模板展开服务
  *
- * 环境变量:
- *   TOKEN      — 访问令牌（必填）
- *   SUB_CONFIG — JSON 格式的节点配置，结构如下:
- *     {
- *       "subs": [
- *         {
- *           "template": "ss://...@{{IP}}:{{PORT}}?#{{NAME}}",
- *           "nodes": [
- *             { "name": "节点名称", "ip": "1.2.3.4", "port": "1234" }
- *           ]
- *         }
- *       ]
- *     }
+ * KV 存储（必须绑定，修改后即时生效无需重新部署）:
+ *   绑定名: CONFIG_KV
+ *   KV 中的 key:
+ *     TOKEN      — 访问令牌，未设置时默认 'auto'
+ *     SUB_CONFIG — JSON 格式的节点配置，结构如下:
+ *       {
+ *         "subs": [
+ *           {
+ *             "template": "ss://...@{{IP}}:{{PORT}}?#{{NAME}}",
+ *             "nodes": [
+ *               { "name": "节点名称", "ip": "1.2.3.4", "port": "1234" }
+ *             ]
+ *           }
+ *         ]
+ *       }
  *
  * 占位符:
  *   {{IP}}   — 节点 IP，IPv6 地址自动包裹 []
@@ -23,6 +25,11 @@
  * 访问方式:
  *   /?token=<TOKEN>        — 返回 base64 编码的订阅内容（默认）
  *   /?token=<TOKEN>&raw=1  — 返回原始多行文本
+ *
+ * 管理 API（需要 TOKEN 鉴权）:
+ *   PUT /admin/config?token=<TOKEN>  — 更新配置到 KV
+ *     Body: { "TOKEN": "...", "SUB_CONFIG": { ... } }
+ *   GET /admin/config?token=<TOKEN>  — 查看 KV 中的当前配置
  */
 
 let myToken = 'auto';
@@ -31,17 +38,36 @@ let total = 99 * 1125899906842624;
 let download = Math.floor(Math.random() * 1099511627776);
 let upload = download;
 
+async function getConfig(env) {
+    const kvToken = await env.CONFIG_KV.get('TOKEN');
+    const kvSubConfig = await env.CONFIG_KV.get('SUB_CONFIG');
+
+    return {
+        token: kvToken || myToken,
+        subConfig: kvSubConfig || '{"subs":[]}',
+    };
+}
+
 export default {
     async fetch(request, env) {
         const url = new URL(request.url);
         const token = url.searchParams.get('token');
 
-        myToken = env.TOKEN || myToken;
+        if (!env.CONFIG_KV) {
+            return new Response('CONFIG_KV binding not configured', { status: 500 });
+        }
+
+        const config = await getConfig(env);
+        myToken = config.token;
 
         const currentDate = new Date();
         currentDate.setHours(0, 0, 0, 0);
         const timeTemp = Math.ceil(currentDate.getTime() / 1000);
         const fakeToken = await MD5MD5(`${myToken}${timeTemp}`);
+
+        if (url.pathname.startsWith('/admin/')) {
+            return handleAdmin(request, env, url, token, fakeToken, config);
+        }
 
         if (!isValidToken(token, fakeToken, url.pathname)) {
             return new Response(await nginx(), {
@@ -50,8 +76,7 @@ export default {
             });
         }
 
-        const subConfigJson = env.SUB_CONFIG || '{"subs":[]}';
-        const result = expandTemplates(subConfigJson);
+        const result = expandTemplates(config.subConfig);
 
         download = Math.floor(((timestamp - Date.now()) / timestamp * total * 1099511627776) / 2);
         total *= 1099511627776;
@@ -69,6 +94,49 @@ export default {
         });
     }
 };
+
+async function handleAdmin(request, env, url, token, fakeToken, config) {
+    if (!isValidToken(token, fakeToken, url.pathname)) {
+        return jsonResponse({ error: 'Unauthorized' }, 401);
+    }
+
+    if (url.pathname === '/admin/config' && request.method === 'GET') {
+        return jsonResponse({
+            TOKEN: config.token,
+            SUB_CONFIG: JSON.parse(config.subConfig),
+        });
+    }
+
+    if (url.pathname === '/admin/config' && request.method === 'PUT') {
+        const body = await request.json();
+
+        if (body.TOKEN !== undefined) {
+            await env.CONFIG_KV.put('TOKEN', body.TOKEN);
+        }
+        if (body.SUB_CONFIG !== undefined) {
+            const subConfigStr = typeof body.SUB_CONFIG === 'string'
+                ? body.SUB_CONFIG
+                : JSON.stringify(body.SUB_CONFIG);
+            await env.CONFIG_KV.put('SUB_CONFIG', subConfigStr);
+        }
+
+        const updated = await getConfig(env);
+        return jsonResponse({
+            message: 'Config updated',
+            TOKEN: updated.token,
+            SUB_CONFIG: JSON.parse(updated.subConfig),
+        });
+    }
+
+    return jsonResponse({ error: 'Not found' }, 404);
+}
+
+function jsonResponse(data, status = 200) {
+    return new Response(JSON.stringify(data, null, 2), {
+        status,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    });
+}
 
 function expandTemplates(subConfigJson) {
     const config = JSON.parse(subConfigJson);

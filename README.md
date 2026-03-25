@@ -15,12 +15,70 @@
 1. 在 Cloudflare Workers 控制台创建新 Worker。
 2. 将 `_worker.js` 的内容粘贴到 Worker 编辑器中。
 
-## 环境变量
+## KV 存储配置
 
-| 变量名 | 必填 | 说明 |
-|--------|------|------|
-| `TOKEN` | 否 | 访问令牌，默认值为 `auto` |
-| `SUB_CONFIG` | 否 | JSON 格式的节点模板配置，详见下方说明 |
+所有配置通过 KV 存储，**修改后即时生效**，无需重新部署。
+
+### 配置步骤
+
+1. 在 Cloudflare 控制台创建一个 KV 命名空间（例如 `CONFIG_KV`）。
+2. 在 Pages / Workers 的设置中，添加 KV 命名空间绑定：
+   - **变量名称**: `CONFIG_KV`
+   - **KV 命名空间**: 选择上一步创建的命名空间
+3. 部署后，通过 Cloudflare 控制台或管理 API 写入配置即可使用。
+
+### KV 中的 Key
+
+| Key | 必填 | 说明 |
+|-----|------|------|
+| `TOKEN` | 否 | 访问令牌，未设置时默认为 `auto` |
+| `SUB_CONFIG` | 否 | JSON 格式的节点配置，详见下方说明 |
+
+你可以在 Cloudflare 控制台直接编辑 KV 值，也可以使用下方的管理 API。
+
+## 管理 API
+
+通过 HTTP 请求直接更新 KV 中的配置（需要 TOKEN 鉴权）。
+
+### 查看当前配置
+
+```
+GET /admin/config?token=<TOKEN>
+```
+
+### 更新配置
+
+```
+PUT /admin/config?token=<TOKEN>
+Content-Type: application/json
+
+{
+  "TOKEN": "new-token",
+  "SUB_CONFIG": {
+    "subs": [...]
+  }
+}
+```
+
+可以只更新其中一个字段，例如只更新 `SUB_CONFIG`：
+
+```
+PUT /admin/config?token=<TOKEN>
+Content-Type: application/json
+
+{
+  "SUB_CONFIG": {
+    "subs": [
+      {
+        "template": "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@{{IP}}:{{PORT}}?#{{NAME}}",
+        "nodes": [
+          { "name": "节点1", "ip": "1.2.3.4", "port": "8080" }
+        ]
+      }
+    ]
+  }
+}
+```
 
 ## SUB_CONFIG 配置说明
 
