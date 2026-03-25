@@ -109,7 +109,10 @@ Content-Type: application/json
 ### 结构
 
 - **`servers`**（SERVERS_KV）— 集中定义服务器，通过 `id` 被 `routes` 引用，地址变更只需改一处，多个部署共享。`host` 和 `hostv6` 至少填一个，同时存在时每条线路展开为两个节点（`hostv6` 节点名后缀 `-ipv6`）
-- **`proxies`**（CONFIG_KV）— 代理列表，每个代理包含 `tag`（标签）、`template`（模板）和 `routes`（线路列表），各部署独立
+- **`proxies`**（CONFIG_KV）— 代理列表，各部署独立。每个代理由 `tag` 标识，可包含：
+  - **`nodes`**（可选）— 完整节点 URI 数组，支持 `{{NAME}}` 占位符（自动替换为 `tag-直连节点-序号`），展开时排在 template 之前
+  - **`template` + `routes`**（可选）— 模板模式，通过引用 servers 自动展开
+  - 两者可同时存在于同一个代理对象中
 - **`routes`** — 线路列表，每条线路通过 `serverId` 引用一个服务器并指定端口
 
 ### 占位符
@@ -120,7 +123,7 @@ Content-Type: application/json
 |--------|------|
 | `{{IP}}` | 服务器地址（从 `servers` 中获取，IPv6 自动包裹 `[]`） |
 | `{{PORT}}` | 线路端口（来自 `routes` 中的 `port`） |
-| `{{NAME}}` | 自动生成为 `tag-route.name`（如 `套餐 A-线路 1`），URL 编码 |
+| `{{NAME}}` | 自动生成，URL 编码。template 中为 `tag-route.name`；nodes 中为 `tag-直连节点-序号` |
 
 ### 配置示例
 
@@ -139,6 +142,10 @@ Content-Type: application/json
 [
   {
     "tag": "套餐 A",
+    "nodes": [
+      "trojan://password@example.com:443?security=tls#{{NAME}}",
+      "vless://uuid@example.com:8443?encryption=none#{{NAME}}"
+    ],
     "template": "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@{{IP}}:{{PORT}}?#{{NAME}}",
     "routes": [
       { "serverId": "server_0", "name": "线路 1", "port": "8388" },
@@ -148,9 +155,11 @@ Content-Type: application/json
 ]
 ```
 
-上面的配置会展开为（注意 server_0 同时有 `host` 和 `hostv6`，展开为两个节点）：
+上面的配置会展开为（`nodes` 先输出，然后是 `template` 展开的结果）：
 
 ```
+trojan://password@example.com:443?security=tls#%E5%A5%97%E9%A4%90%20A-%E7%9B%B4%E8%BF%9E%E8%8A%82%E7%82%B9-1
+vless://uuid@example.com:8443?encryption=none#%E5%A5%97%E9%A4%90%20A-%E7%9B%B4%E8%BF%9E%E8%8A%82%E7%82%B9-2
 ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@203.0.113.10:8388?#%E5%A5%97%E9%A4%90%20A-%E7%BA%BF%E8%B7%AF%201
 ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@[2001:db8::1]:8388?#%E5%A5%97%E9%A4%90%20A-%E7%BA%BF%E8%B7%AF%201-ipv6
 ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@203.0.113.20:8389?#%E5%A5%97%E9%A4%90%20A-%E7%BA%BF%E8%B7%AF%202

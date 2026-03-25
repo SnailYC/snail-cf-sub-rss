@@ -13,9 +13,11 @@
  *     key: PROXIES — JSON 数组:
  *       [{
  *         "tag": "订阅标签",
- *         "template": "ss://...@{{IP}}:{{PORT}}?#{{NAME}}",
+ *         "nodes": ["ss://完整URI#{{NAME}}"],      // 可选，直连节点，展开在 template 之前
+ *         "template": "ss://...@{{IP}}:{{PORT}}?#{{NAME}}",  // 可选，模板模式
  *         "routes": [{ "serverId": "server_0", "name": "线路名称", "port": "1234" }]
  *       }]
+ *       nodes 和 template+routes 可同时存在，nodes 先输出；nodes 中的 {{NAME}} 自动替换为 tag-直连节点-序号
  *
  * 占位符:
  *   {{IP}}   — 服务器地址，IPv6 自动包裹 []
@@ -180,25 +182,35 @@ function expandTemplates(serversJson, proxiesJson) {
 
     const lines = [];
     for (const proxy of proxies) {
-        const { tag, template, routes } = proxy;
-        for (const route of routes || []) {
-            const server = serverMap[route.serverId];
-            if (!server) continue;
+        const { tag, nodes, template, routes } = proxy;
 
-            if (server.host) {
-                const name = `${tag}-${route.name}`;
-                lines.push(template
-                    .replaceAll('{{IP}}', wrapIPv6(server.host))
-                    .replaceAll('{{PORT}}', route.port)
-                    .replaceAll('{{NAME}}', encodeURIComponent(name)));
-            }
+        if (nodes) {
+            nodes.forEach((node, i) => {
+                const name = `${tag}-直连节点-${i + 1}`;
+                lines.push(node.replaceAll('{{NAME}}', encodeURIComponent(name)));
+            });
+        }
 
-            if (server.hostv6) {
-                const name = `${tag}-${route.name}-ipv6`;
-                lines.push(template
-                    .replaceAll('{{IP}}', wrapIPv6(server.hostv6))
-                    .replaceAll('{{PORT}}', route.port)
-                    .replaceAll('{{NAME}}', encodeURIComponent(name)));
+        if (template) {
+            for (const route of routes || []) {
+                const server = serverMap[route.serverId];
+                if (!server) continue;
+
+                if (server.host) {
+                    const name = `${tag}-${route.name}`;
+                    lines.push(template
+                        .replaceAll('{{IP}}', wrapIPv6(server.host))
+                        .replaceAll('{{PORT}}', route.port)
+                        .replaceAll('{{NAME}}', encodeURIComponent(name)));
+                }
+
+                if (server.hostv6) {
+                    const name = `${tag}-${route.name}-ipv6`;
+                    lines.push(template
+                        .replaceAll('{{IP}}', wrapIPv6(server.hostv6))
+                        .replaceAll('{{PORT}}', route.port)
+                        .replaceAll('{{NAME}}', encodeURIComponent(name)));
+                }
             }
         }
     }
