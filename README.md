@@ -61,8 +61,8 @@ PUT /admin/servers?token=<TOKEN>
 Content-Type: application/json
 
 [
-  { "id": "server_0", "name": "香港节点 01", "host": "203.0.113.10" },
-  { "id": "server_1", "name": "香港节点 02", "host": "2001:db8::1" }
+  { "id": "server_0", "name": "香港节点 01", "host": "203.0.113.10", "hostv6": "2001:db8::1" },
+  { "id": "server_1", "name": "香港节点 02", "host": "203.0.113.20" }
 ]
 ```
 
@@ -108,7 +108,7 @@ Content-Type: application/json
 
 ### 结构
 
-- **`servers`**（SERVERS_KV）— 集中定义服务器，通过 `id` 被 `routes` 引用，地址变更只需改一处，多个部署共享
+- **`servers`**（SERVERS_KV）— 集中定义服务器，通过 `id` 被 `routes` 引用，地址变更只需改一处，多个部署共享。`host` 和 `hostv6` 至少填一个，同时存在时每条线路展开为两个节点（`hostv6` 节点名后缀 `-ipv6`）
 - **`proxies`**（CONFIG_KV）— 代理列表，每个代理包含 `tag`（标签）、`template`（模板）和 `routes`（线路列表），各部署独立
 - **`routes`** — 线路列表，每条线路通过 `serverId` 引用一个服务器并指定端口
 
@@ -128,8 +128,8 @@ Content-Type: application/json
 
 ```json
 [
-  { "id": "server_0", "name": "香港节点 01", "host": "203.0.113.10" },
-  { "id": "server_1", "name": "香港节点 02", "host": "2001:db8::1" }
+  { "id": "server_0", "name": "香港节点 01", "host": "203.0.113.10", "hostv6": "2001:db8::1" },
+  { "id": "server_1", "name": "香港节点 02", "host": "203.0.113.20" }
 ]
 ```
 
@@ -144,25 +144,16 @@ Content-Type: application/json
       { "serverId": "server_0", "name": "线路 1", "port": "8388" },
       { "serverId": "server_1", "name": "线路 2", "port": "8389" }
     ]
-  },
-  {
-    "tag": "套餐 B",
-    "template": "vless://00000000-0000-0000-0000-000000000000@{{IP}}:{{PORT}}?encryption=none&security=reality&sni=example.com&fp=chrome&type=xhttp#{{NAME}}",
-    "routes": [
-      { "serverId": "server_0", "name": "线路 1", "port": "443" },
-      { "serverId": "server_1", "name": "线路 2", "port": "8443" }
-    ]
   }
 ]
 ```
 
-上面的配置会展开为：
+上面的配置会展开为（注意 server_0 同时有 `host` 和 `hostv6`，展开为两个节点）：
 
 ```
 ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@203.0.113.10:8388?#%E5%A5%97%E9%A4%90%20A-%E7%BA%BF%E8%B7%AF%201
-ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@[2001:db8::1]:8389?#%E5%A5%97%E9%A4%90%20A-%E7%BA%BF%E8%B7%AF%202
-vless://00000000-0000-0000-0000-000000000000@203.0.113.10:443?encryption=none&security=reality&sni=example.com&fp=chrome&type=xhttp#%E5%A5%97%E9%A4%90%20B-%E7%BA%BF%E8%B7%AF%201
-vless://00000000-0000-0000-0000-000000000000@[2001:db8::1]:8443?encryption=none&security=reality&sni=example.com&fp=chrome&type=xhttp#%E5%A5%97%E9%A4%90%20B-%E7%BA%BF%E8%B7%AF%202
+ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@[2001:db8::1]:8388?#%E5%A5%97%E9%A4%90%20A-%E7%BA%BF%E8%B7%AF%201-ipv6
+ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@203.0.113.20:8389?#%E5%A5%97%E9%A4%90%20A-%E7%BA%BF%E8%B7%AF%202
 ```
 
 ## 访问方式

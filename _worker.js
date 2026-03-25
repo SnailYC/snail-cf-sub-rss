@@ -5,7 +5,8 @@
  *
  *   SERVERS_KV — 服务器列表（多个部署可共享同一个 KV 命名空间）
  *     key: SERVERS — JSON 数组:
- *       [{ "id": "server_0", "name": "服务器名称", "host": "1.2.3.4" }]
+ *       [{ "id": "server_0", "name": "服务器名称", "host": "1.2.3.4", "hostv6": "2001:db8::1" }]
+ *       host 和 hostv6 至少填一个；同时存在时展开为两个节点（hostv6 节点名后缀 -ipv6）
  *
  *   CONFIG_KV — 部署独立配置（每个部署绑定各自的 KV 命名空间）
  *     key: TOKEN   — 访问令牌，未设置时默认 'auto'
@@ -164,6 +165,10 @@ function jsonResponse(data, status = 200) {
     });
 }
 
+function wrapIPv6(addr) {
+    return addr.includes(':') ? `[${addr}]` : addr;
+}
+
 function expandTemplates(serversJson, proxiesJson) {
     const servers = JSON.parse(serversJson);
     const proxies = JSON.parse(proxiesJson);
@@ -179,13 +184,22 @@ function expandTemplates(serversJson, proxiesJson) {
         for (const route of routes || []) {
             const server = serverMap[route.serverId];
             if (!server) continue;
-            const host = server.host.includes(':') ? `[${server.host}]` : server.host;
-            const name = `${tag}-${route.name}`;
-            const line = template
-                .replaceAll('{{IP}}', host)
-                .replaceAll('{{PORT}}', route.port)
-                .replaceAll('{{NAME}}', encodeURIComponent(name));
-            lines.push(line);
+
+            if (server.host) {
+                const name = `${tag}-${route.name}`;
+                lines.push(template
+                    .replaceAll('{{IP}}', wrapIPv6(server.host))
+                    .replaceAll('{{PORT}}', route.port)
+                    .replaceAll('{{NAME}}', encodeURIComponent(name)));
+            }
+
+            if (server.hostv6) {
+                const name = `${tag}-${route.name}-ipv6`;
+                lines.push(template
+                    .replaceAll('{{IP}}', wrapIPv6(server.hostv6))
+                    .replaceAll('{{PORT}}', route.port)
+                    .replaceAll('{{NAME}}', encodeURIComponent(name)));
+            }
         }
     }
 
