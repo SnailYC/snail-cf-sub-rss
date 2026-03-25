@@ -55,7 +55,7 @@ Content-Type: application/json
 {
   "TOKEN": "new-token",
   "SUB_CONFIG": {
-    "subs": [...]
+    "proxies": [...]
   }
 }
 ```
@@ -69,14 +69,14 @@ Content-Type: application/json
 {
   "SUB_CONFIG": {
     "servers": [
-      { "id": "s0", "name": "香港节点 01", "ip": "203.0.113.10" }
+      { "id": "s0", "name": "香港节点 01", "host": "203.0.113.10" }
     ],
-    "subs": [
+    "proxies": [
       {
         "tag": "套餐 A",
         "template": "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@{{IP}}:{{PORT}}?#{{NAME}}",
         "routes": [
-          { "server": "s0", "name": "线路 1", "port": "8388" }
+          { "serverId": "s0", "name": "线路 1", "port": "8388" }
         ]
       }
     ]
@@ -86,13 +86,13 @@ Content-Type: application/json
 
 ## SUB_CONFIG 配置说明
 
-`SUB_CONFIG` 是一个 JSON 字符串，包含 `servers`（服务器列表）和 `subs`（订阅列表）两部分。
+`SUB_CONFIG` 是一个 JSON 字符串，包含 `servers`（服务器列表）和 `proxies`（代理列表）两部分。
 
 ### 结构
 
-- **`servers`** — 集中定义服务器，通过 `id` 被 `routes` 引用，IP 变更只需改一处
-- **`subs`** — 订阅列表，每个订阅包含 `tag`（标签）、`template`（模板）和 `routes`（线路列表）
-- **`routes`** — 线路列表，每条线路引用一个 `server` 并指定端口
+- **`servers`** — 集中定义服务器，通过 `id` 被 `routes` 引用，地址变更只需改一处
+- **`proxies`** — 代理列表，每个代理包含 `tag`（标签）、`template`（模板）和 `routes`（线路列表）
+- **`routes`** — 线路列表，每条线路通过 `serverId` 引用一个服务器并指定端口
 
 ### 占位符
 
@@ -100,7 +100,7 @@ Content-Type: application/json
 
 | 占位符 | 说明 |
 |--------|------|
-| `{{IP}}` | 服务器 IP 地址（从 `servers` 中获取，IPv6 自动包裹 `[]`） |
+| `{{IP}}` | 服务器地址（从 `servers` 中获取，IPv6 自动包裹 `[]`） |
 | `{{PORT}}` | 线路端口（来自 `routes` 中的 `port`） |
 | `{{NAME}}` | 自动生成为 `tag-route.name`（如 `套餐 A-线路 1`），URL 编码 |
 
@@ -109,24 +109,24 @@ Content-Type: application/json
 ```json
 {
   "servers": [
-    { "id": "server_0", "name": "香港节点 01", "ip": "203.0.113.10" },
-    { "id": "server_1", "name": "香港节点 02", "ip": "2001:db8::1" }
+    { "id": "server_0", "name": "香港节点 01", "host": "203.0.113.10" },
+    { "id": "server_1", "name": "香港节点 02", "host": "2001:db8::1" }
   ],
-  "subs": [
+  "proxies": [
     {
       "tag": "套餐 A",
       "template": "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@{{IP}}:{{PORT}}?#{{NAME}}",
       "routes": [
-        { "server": "server_0", "name": "线路 1", "port": "8388" },
-        { "server": "server_1", "name": "线路 2", "port": "8389" }
+        { "serverId": "server_0", "name": "线路 1", "port": "8388" },
+        { "serverId": "server_1", "name": "线路 2", "port": "8389" }
       ]
     },
     {
       "tag": "套餐 B",
       "template": "vless://00000000-0000-0000-0000-000000000000@{{IP}}:{{PORT}}?encryption=none&security=reality&sni=example.com&fp=chrome&type=xhttp#{{NAME}}",
       "routes": [
-        { "server": "server_0", "name": "线路 1", "port": "443" },
-        { "server": "server_1", "name": "线路 2", "port": "8443" }
+        { "serverId": "server_0", "name": "线路 1", "port": "443" },
+        { "serverId": "server_1", "name": "线路 2", "port": "8443" }
       ]
     }
   ]

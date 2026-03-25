@@ -8,14 +8,14 @@
  *     SUB_CONFIG — JSON 格式的节点配置，结构如下:
  *       {
  *         "servers": [
- *           { "id": "server_0", "name": "服务器名称", "ip": "1.2.3.4" }
+ *           { "id": "server_0", "name": "服务器名称", "host": "1.2.3.4" }
  *         ],
- *         "subs": [
+ *         "proxies": [
  *           {
  *             "tag": "订阅标签",
  *             "template": "ss://...@{{IP}}:{{PORT}}?#{{NAME}}",
  *             "routes": [
- *               { "server": "server_0", "name": "线路名称", "port": "1234" }
+ *               { "serverId": "server_0", "name": "线路名称", "port": "1234" }
  *             ]
  *           }
  *         ]
@@ -48,7 +48,7 @@ async function getConfig(env) {
 
     return {
         token: kvToken || myToken,
-        subConfig: kvSubConfig || '{"subs":[]}',
+        subConfig: kvSubConfig || '{"proxies":[]}',
     };
 }
 
@@ -150,15 +150,15 @@ function expandTemplates(subConfigJson) {
     }
 
     const lines = [];
-    for (const sub of config.subs || []) {
-        const { tag, template, routes } = sub;
+    for (const proxy of config.proxies || []) {
+        const { tag, template, routes } = proxy;
         for (const route of routes || []) {
-            const server = serverMap[route.server];
+            const server = serverMap[route.serverId];
             if (!server) continue;
-            const ip = server.ip.includes(':') ? `[${server.ip}]` : server.ip;
+            const host = server.host.includes(':') ? `[${server.host}]` : server.host;
             const name = `${tag}-${route.name}`;
             const line = template
-                .replaceAll('{{IP}}', ip)
+                .replaceAll('{{IP}}', host)
                 .replaceAll('{{PORT}}', route.port)
                 .replaceAll('{{NAME}}', encodeURIComponent(name));
             lines.push(line);
